@@ -11,56 +11,22 @@ with open(training_file, mode='rb') as f:
 with open(testing_file, mode='rb') as f:
     test = pickle.load(f)
 
-
-X_train, y_train = train['features'], train['labels']
-X_test, y_test = test['features'], test['labels']
-
-
-class Dataset(object):
-    def __init__(self, x_train, y_train):
-        self.x_train = x_train
-        self.y_train = one_hot(y_train)
-        assert(x_train.shape[0] == y_train.shape[0])
-        self._num_examples = x_train.shape[0]
-
-        self._epochs_completed = 0
-        self._index_in_epoch = 0
-
-    def next_batch(self, batch_size):
-        start = self._index_in_epoch
-        self._index_in_epoch += batch_size
-        if self._index_in_epoch > self._num_examples:
-            # finish epoch
-            self._epochs_completed += 1
-            # shuffle
-            perm = np.arange(self._num_examples)
-            np.random.shuffle(perm)
-            print("shuffle!")
-            self.x_train = self.x_train[perm]
-            self.y_train = self.y_train[perm]
-            print("after shuffle shape", self.x_train.shape, self.y_train.shape)
-            # start next epoch
-            start = 0
-            self._index_in_epoch = batch_size
-            assert batch_size <= self._num_examples
-        end = self._index_in_epoch
-
-        return self.x_train[start:end].reshape(BATCH_SIZE, 32*32*3), self.y_train[start:end]
+# Question1: preprocessing
+'''
+split data into test and validation set
+'''
+from sklearn.model_selection import train_test_split
+x_train, x_validate, y_train, y_validate = train_test_split(
+    train['features'], train['labels'], test_size=0.2, random_state=42, stratify=train['labels']
+)
 
 
-print("shape", X_train.shape)
-print("unique labels", np.unique(np.concatenate([train['labels'], test['labels']])).size)
-
-v_max = np.amax(train['features'])
-v_min = np.amin(train['features'])
-print("v_max", v_max, "v_min", v_min)
-# it's RGB channel
 
 n_classes = 43
 
 import tensorflow as tf
 # image is 32x32x3
-x = tf.placeholder(tf.float32, (None, 32*32*3))
+x = tf.placeholder(tf.float32, [None, 32,32,3])
 # unique labels: 43
 y = tf.placeholder(tf.float32, (None, n_classes))
 
@@ -72,13 +38,13 @@ layer_width = {
 
 weights = {
     'layer_1': tf.Variable(tf.truncated_normal(
-        [5, 5, 3, layer_width['layer_1']])),
+        [5, 5, 3, layer_width['layer_1']], stddev=0.01)),
     'layer_2': tf.Variable(tf.truncated_normal(
-        [5, 5, layer_width['layer_1'], layer_width['layer_2']])),
+        [5, 5, layer_width['layer_1'], layer_width['layer_2']], stddev=0.01)),
     'fully_connected': tf.Variable(tf.truncated_normal(
-        [5*5*16, layer_width['fully_connected']])),
+        [5*5*16, layer_width['fully_connected']], stddev=0.01)),
     'out': tf.Variable(tf.truncated_normal(
-        [layer_width['fully_connected'], n_classes]))
+        [layer_width['fully_connected'], n_classes], stddev=0.01))
 }
 biases = {
     'layer_1': tf.Variable(tf.zeros(layer_width['layer_1'])),
@@ -118,6 +84,8 @@ def LeNet(x):
     fc1 = tf.add(tf.matmul(fc1, weights['fully_connected']), biases['fully_connected'])
     fc1 = tf.nn.relu(fc1)
 
+    fc1 = tf.nn.dropout(fc1, 0.5)
+
     out = tf.add(tf.matmul(fc1, weights['out']), biases['out'])
 
     return out
@@ -125,7 +93,7 @@ def LeNet(x):
 
 fc2 = LeNet(x)
 loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(fc2, y))
-opt = tf.train.AdamOptimizer()
+opt = tf.train.AdamOptimizer(learning_rate=0.001)
 train_op = opt.minimize(loss_op)
 correct_prediction = tf.equal(tf.argmax(fc2, 1), tf.argmax(y,1))
 accuracy_op = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
@@ -136,19 +104,21 @@ def one_hot(a):
     return b
 
 #take [0:50] as train, [51:100] as loss
-validation_size = 5000
-train_dataset = Dataset(X_train[validation_size:], y_train[validation_size:])
-validation_dataset = Dataset(X_train[:validation_size], y_train[:validation_size])
 
 EPOCHS = 20
 BATCH_SIZE = 50
 
-def eval_data(dataset):
-    steps_per_epoch = dataset._num_examples // BATCH_SIZE
+def eval_data(x_data,y_data):
+    steps_per_epoch = x_data.shape[0] // BATCH_SIZE
     num_examples = steps_per_epoch * BATCH_SIZE
     total_acc, total_loss = 0, 0
     for step in range(steps_per_epoch):
-        batch_x, batch_y = dataset.next_batch(BATCH_SIZE)
+        start = step * BATCH_SIZE
+        end = min(start + BATCH_SIZE, x_data.shape[0])
+        batch_x = x_data[start:end]
+        batch_y = one_hot(y_data[start:end])
+        g1, g2, g3, g4 = sess.run([fc2,tf.argmax(fc2,1), tf.argmax(y,1), tf.equal(tf.argmax(fc2,1), tf.argmax(y,1))], feed_dict={x:batch_x, y:batch_y})
+        #print("g1:", g1, "g2:", g2, "g3:", g3, "g4:", g4)
         loss, acc = sess.run([loss_op, accuracy_op], feed_dict={x: batch_x, y: batch_y})
         total_acc += (acc * batch_x.shape[0])
         total_loss += (loss * batch_x.shape[0])
@@ -159,18 +129,20 @@ def eval_data(dataset):
 with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
 
-    steps_per_epoch = train_dataset._num_examples // BATCH_SIZE
-    num_examples = steps_per_epoch * BATCH_SIZE
+    steps_per_epoch = x_train.shape[0] // BATCH_SIZE
 
     for i in range(EPOCHS):
         for step in range(steps_per_epoch):
-            batch_x, batch_y = train_dataset.next_batch(BATCH_SIZE)
+            start = step * BATCH_SIZE
+            end = min(start + BATCH_SIZE, x_train.shape[0])
+            batch_x = x_train[start:end]
+            batch_y = one_hot(y_train[start:end])
             loss = sess.run(train_op, feed_dict={x:batch_x, y:batch_y})
 
-        val_loss, val_acc = eval_data(validation_dataset)
+        val_loss, val_acc = eval_data(x_validate, y_validate)
         print("EPOCH {}...".format(i+1))
         print("Validation loss = {:.3f}".format(val_loss))
-        print("Validation accuracy = {:.3f}".format(val_acc))
+        print("Validation accuracy = {:.8f}".format(val_acc))
         print()
 
 
