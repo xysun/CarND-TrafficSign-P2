@@ -19,7 +19,7 @@ X_test, y_test = test['features'], test['labels']
 class Dataset(object):
     def __init__(self, x_train, y_train):
         self.x_train = x_train
-        self.y_train = y_train
+        self.y_train = one_hot(y_train)
         assert(x_train.shape[0] == y_train.shape[0])
         self._num_examples = x_train.shape[0]
 
@@ -38,12 +38,14 @@ class Dataset(object):
             print("shuffle!")
             self.x_train = self.x_train[perm]
             self.y_train = self.y_train[perm]
+            print("after shuffle shape", self.x_train.shape, self.y_train.shape)
             # start next epoch
             start = 0
             self._index_in_epoch = batch_size
             assert batch_size <= self._num_examples
         end = self._index_in_epoch
-        return self.x_train[start:end], self.y_train[start:end]
+
+        return self.x_train[start:end].reshape(BATCH_SIZE, 32*32*3), self.y_train[start:end]
 
 
 print("shape", X_train.shape)
@@ -58,9 +60,9 @@ n_classes = 43
 
 import tensorflow as tf
 # image is 32x32x3
-x = tf.placeholder(tf.float32, [None,32,32,3])
+x = tf.placeholder(tf.float32, (None, 32*32*3))
 # unique labels: 43
-y = tf.placeholder(tf.float32, [None,n_classes])
+y = tf.placeholder(tf.float32, (None, n_classes))
 
 layer_width = {
     'layer_1': 6,
@@ -135,8 +137,8 @@ def one_hot(a):
 
 #take [0:50] as train, [51:100] as loss
 validation_size = 5000
-train_dataset = Dataset(X_train[validation_size:], one_hot(y_train[validation_size:]))
-validation_dataset = Dataset(X_train[:validation_size], one_hot(y_train[:validation_size]))
+train_dataset = Dataset(X_train[validation_size:], y_train[validation_size:])
+validation_dataset = Dataset(X_train[:validation_size], y_train[:validation_size])
 
 EPOCHS = 20
 BATCH_SIZE = 50
