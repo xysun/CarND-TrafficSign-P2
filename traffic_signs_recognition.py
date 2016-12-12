@@ -15,6 +15,37 @@ with open(testing_file, mode='rb') as f:
 X_train, y_train = train['features'], train['labels']
 X_test, y_test = test['features'], test['labels']
 
+
+class Dataset(object):
+    def __init__(self, x_train, y_train):
+        self.x_train = x_train
+        self.y_train = y_train
+        assert(x_train.shape[0] == y_train.shape[0])
+        self._num_examples = x_train.shape[0]
+
+        self._epochs_completed = 0
+        self._index_in_epoch = 0
+
+    def next_batch(self, batch_size):
+        start = self._index_in_epoch
+        self._index_in_epoch += batch_size
+        if self._index_in_epoch > self._num_examples:
+            # finish epoch
+            self._epochs_completed += 1
+            # shuffle
+            perm = np.arange(self._num_examples)
+            np.random.shuffle(perm)
+            print("shuffle!")
+            self.x_train = self.x_train[perm]
+            self.y_train = self.y_train[perm]
+            # start next epoch
+            start = 0
+            self._index_in_epoch = batch_size
+            assert batch_size <= self._num_examples
+        end = self._index_in_epoch
+        return self.x_train[start:end], self.y_train[start:end]
+
+
 print("shape", X_train.shape)
 print("unique labels", np.unique(np.concatenate([train['labels'], test['labels']])).size)
 
@@ -103,22 +134,42 @@ def one_hot(a):
     return b
 
 #take [0:50] as train, [51:100] as loss
-x_validate, y_validate = X_train[100:150], one_hot(y_train[100:150])
+validation_size = 5000
+train_dataset = Dataset(X_train[validation_size:], one_hot(y_train[validation_size:]))
+validation_dataset = Dataset(X_train[:validation_size], one_hot(y_train[:validation_size]))
 
-EPOCHS = 10
+EPOCHS = 20
 BATCH_SIZE = 50
+
+def eval_data(dataset):
+    steps_per_epoch = dataset._num_examples // BATCH_SIZE
+    num_examples = steps_per_epoch * BATCH_SIZE
+    total_acc, total_loss = 0, 0
+    for step in range(steps_per_epoch):
+        batch_x, batch_y = dataset.next_batch(BATCH_SIZE)
+        loss, acc = sess.run([loss_op, accuracy_op], feed_dict={x: batch_x, y: batch_y})
+        total_acc += (acc * batch_x.shape[0])
+        total_loss += (loss * batch_x.shape[0])
+    return total_loss / num_examples, total_acc / num_examples
+
+
 
 with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
 
-    batch_x, batch_y = X_train[:50], one_hot(y_train[:50])
+    steps_per_epoch = train_dataset._num_examples // BATCH_SIZE
+    num_examples = steps_per_epoch * BATCH_SIZE
 
-    sess.run(train_op, feed_dict={x:batch_x, y:batch_y})
+    for i in range(EPOCHS):
+        for step in range(steps_per_epoch):
+            batch_x, batch_y = train_dataset.next_batch(BATCH_SIZE)
+            loss = sess.run(train_op, feed_dict={x:batch_x, y:batch_y})
 
-    loss, acc = sess.run([loss_op, accuracy_op], feed_dict={x:x_validate, y:y_validate})
-
-    print("loss", loss, "acc", acc)
-
+        val_loss, val_acc = eval_data(validation_dataset)
+        print("EPOCH {}...".format(i+1))
+        print("Validation loss = {:.3f}".format(val_loss))
+        print("Validation accuracy = {:.3f}".format(val_acc))
+        print()
 
 
 
