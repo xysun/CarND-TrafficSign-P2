@@ -11,24 +11,29 @@ with open(training_file, mode='rb') as f:
 with open(testing_file, mode='rb') as f:
     test = pickle.load(f)
 
-# Question1: preprocessing
-'''
-split data into test and validation set
-'''
-from sklearn.model_selection import train_test_split
-x_train, x_validate, y_train, y_validate = train_test_split(
-    train['features'], train['labels'], test_size=0.2, random_state=42, stratify=train['labels']
-)
-
-
-
 n_classes = 43
 
+'''
+Question 1: preprocessing
+split data into test and validation set, also apply one hot encoding to y
+'''
+from sklearn.model_selection import train_test_split
+
+
+def one_hot(a):
+    b = np.zeros((a.size, n_classes))
+    b[np.arange(a.size),a] = 1
+    return b
+
+
+'''
+Question 3: model architecture
+2 layer ConvNet
+'''
+
 import tensorflow as tf
-# image is 32x32x3
-x = tf.placeholder(tf.float32, [None, 32,32,3])
-# unique labels: 43
-y = tf.placeholder(tf.float32, (None, n_classes))
+
+p_stdev = 0.01
 
 layer_width = {
     'layer_1': 6,
@@ -40,12 +45,13 @@ weights = {
     'layer_1': tf.Variable(tf.truncated_normal(
         [5, 5, 3, layer_width['layer_1']], stddev=0.01)),
     'layer_2': tf.Variable(tf.truncated_normal(
-        [5, 5, layer_width['layer_1'], layer_width['layer_2']], stddev=0.01)),
+        [5, 5, layer_width['layer_1'], layer_width['layer_2']], stddev=p_stdev)),
     'fully_connected': tf.Variable(tf.truncated_normal(
-        [5*5*16, layer_width['fully_connected']], stddev=0.01)),
+        [5*5*16, layer_width['fully_connected']], stddev=p_stdev)),
     'out': tf.Variable(tf.truncated_normal(
-        [layer_width['fully_connected'], n_classes], stddev=0.01))
+        [layer_width['fully_connected'], n_classes], stddev=p_stdev))
 }
+
 biases = {
     'layer_1': tf.Variable(tf.zeros(layer_width['layer_1'])),
     'layer_2': tf.Variable(tf.zeros(layer_width['layer_2'])),
@@ -91,20 +97,26 @@ def LeNet(x):
     return out
 
 
+'''
+Question : how do you train model?
+'''
+
+# image is 32x32x3
+x = tf.placeholder(tf.float32, [None, 32,32,3])
+# unique labels: 43
+y = tf.placeholder(tf.float32, (None, n_classes))
+
 fc2 = LeNet(x)
+# loss function
 loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(fc2, y))
+# optimizer
 opt = tf.train.AdamOptimizer(learning_rate=0.001)
 train_op = opt.minimize(loss_op)
+# accuracy
 correct_prediction = tf.equal(tf.argmax(fc2, 1), tf.argmax(y,1))
 accuracy_op = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-def one_hot(a):
-    b = np.zeros((a.size, n_classes))
-    b[np.arange(a.size),a] = 1
-    return b
-
-#take [0:50] as train, [51:100] as loss
-
+# hyper parameters
 EPOCHS = 20
 BATCH_SIZE = 50
 
@@ -116,18 +128,26 @@ def eval_data(x_data,y_data):
         start = step * BATCH_SIZE
         end = min(start + BATCH_SIZE, x_data.shape[0])
         batch_x = x_data[start:end]
-        batch_y = one_hot(y_data[start:end])
-        g1, g2, g3, g4 = sess.run([fc2,tf.argmax(fc2,1), tf.argmax(y,1), tf.equal(tf.argmax(fc2,1), tf.argmax(y,1))], feed_dict={x:batch_x, y:batch_y})
+        batch_y = y_data[start:end]
+        #g1, g2, g3, g4 = sess.run([fc2,tf.argmax(fc2,1), tf.argmax(y,1), tf.equal(tf.argmax(fc2,1), tf.argmax(y,1))], feed_dict={x:batch_x, y:batch_y})
         #print("g1:", g1, "g2:", g2, "g3:", g3, "g4:", g4)
         loss, acc = sess.run([loss_op, accuracy_op], feed_dict={x: batch_x, y: batch_y})
         total_acc += (acc * batch_x.shape[0])
         total_loss += (loss * batch_x.shape[0])
-    return total_loss / num_examples, total_acc / num_examples
 
+    return total_loss / num_examples, total_acc / num_examples
 
 
 with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
+
+    # shuffle data:
+    x_train, x_validate, y_train, y_validate = train_test_split(
+        train['features'], train['labels'], test_size=0.2, random_state=42, stratify=train['labels']
+    )
+
+    y_train = one_hot(y_train)
+    y_validate = one_hot(y_validate)
 
     steps_per_epoch = x_train.shape[0] // BATCH_SIZE
 
@@ -136,7 +156,7 @@ with tf.Session() as sess:
             start = step * BATCH_SIZE
             end = min(start + BATCH_SIZE, x_train.shape[0])
             batch_x = x_train[start:end]
-            batch_y = one_hot(y_train[start:end])
+            batch_y = y_train[start:end]
             loss = sess.run(train_op, feed_dict={x:batch_x, y:batch_y})
 
         val_loss, val_acc = eval_data(x_validate, y_validate)
@@ -145,5 +165,10 @@ with tf.Session() as sess:
         print("Validation accuracy = {:.8f}".format(val_acc))
         print()
 
+        # shuffle data:
+        x_train, x_validate, y_train, y_validate = train_test_split(
+            train['features'], train['labels'], test_size=0.2, random_state=42, stratify=train['labels']
+        )
 
-
+        y_train = one_hot(y_train)
+        y_validate = one_hot(y_validate)
