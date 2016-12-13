@@ -2,6 +2,7 @@
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
+import cv2
 
 training_file = "C:\\Users\\AW51R2\\code\\carnd\\traffic-signs-data\\train.p"
 testing_file = "C:\\Users\\AW51R2\\code\\carnd\\traffic-signs-data\\test.p"
@@ -12,12 +13,96 @@ with open(testing_file, mode='rb') as f:
     test = pickle.load(f)
 
 n_classes = 43
+count = train['features'].shape[0]
 
 '''
 Question 1: preprocessing
-split data into test and validation set, also apply one hot encoding to y
+- split data into test and validation set, also apply one hot encoding to y
+- [TODO] convert features into YUV
 '''
 from sklearn.model_selection import train_test_split
+
+train_features = train['features']
+
+# YUV doesn't work...
+'''
+for i in range(train_features.shape[0]):
+    yuv = cv2.cvtColor(train_features[i], cv2.COLOR_RGB2YUV)
+    train_features[i] = yuv
+'''
+
+# generate translated image:
+TRANSLATE_DELTA = 4
+ROTATE_DELTA = 90
+
+train_translated_right = np.copy(train_features)
+train_translated_left = np.copy(train_features)
+
+train_translated_up = np.copy(train_features)
+train_translated_down = np.copy(train_features)
+
+train_rotate_right = np.copy(train_features)
+train_rotate_left = np.copy(train_features)
+
+m_right = np.float32([[1,0,TRANSLATE_DELTA],[0,1,0]])
+m_left  = np.float32([[1,0,-TRANSLATE_DELTA],[0,1,0]])
+
+m_up = np.float32([[1,0,0],[0,1,TRANSLATE_DELTA]])
+m_down = np.float32([[1,0,0],[0,1,-TRANSLATE_DELTA]])
+
+r_right = cv2.getRotationMatrix2D((16,16),ROTATE_DELTA,1)
+r_left = cv2.getRotationMatrix2D((16,16),-ROTATE_DELTA,1)
+
+for i in range(count):
+    moved_right = cv2.warpAffine(train_translated_right[i], m_right, (32,32))
+    moved_left   = cv2.warpAffine(train_translated_left[i], m_left, (32,32))
+
+    moved_up = cv2.warpAffine(train_translated_up[i], m_up, (32,32))
+    moved_down = cv2.warpAffine(train_translated_down[i], m_down, (32,32))
+
+    rotate_right = cv2.warpAffine(train_rotate_right[i], r_right, (32,32))
+    rotate_left = cv2.warpAffine(train_rotate_left[i], r_left, (32, 32))
+
+    train_translated_right[i] = moved_right
+    train_translated_left[i] = moved_left
+
+    train_translated_up[i] = moved_up
+    train_translated_down[i] = moved_down
+
+    train_rotate_right[i] = rotate_right
+    train_rotate_left[i] = rotate_left
+
+
+
+train_data_all = np.concatenate([
+    train_features,
+    train_translated_right,
+    train_translated_left,
+    train_translated_up,
+    train_translated_down
+])
+
+train_label_all = np.concatenate([
+    train['labels'],
+    train['labels'],
+    train['labels'],
+    train['labels'],
+    train['labels']
+])
+
+print("fake data generated", train_data_all.shape)
+
+def shuffle():
+    x_train, x_validate, y_train, y_validate = train_test_split(
+        train_data_all,
+        train_label_all,
+        test_size=0.2, random_state=42, stratify=train_label_all
+    )
+
+    y_train = one_hot(y_train)
+    y_validate = one_hot(y_validate)
+
+    return x_train, x_validate, y_train, y_validate
 
 
 def one_hot(a):
@@ -142,13 +227,7 @@ with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
 
     # shuffle data:
-    x_train, x_validate, y_train, y_validate = train_test_split(
-        train['features'], train['labels'], test_size=0.2, random_state=42, stratify=train['labels']
-    )
-
-    y_train = one_hot(y_train)
-    y_validate = one_hot(y_validate)
-
+    x_train, x_validate, y_train, y_validate = shuffle()
     steps_per_epoch = x_train.shape[0] // BATCH_SIZE
 
     for i in range(EPOCHS):
@@ -166,9 +245,4 @@ with tf.Session() as sess:
         print()
 
         # shuffle data:
-        x_train, x_validate, y_train, y_validate = train_test_split(
-            train['features'], train['labels'], test_size=0.2, random_state=42, stratify=train['labels']
-        )
-
-        y_train = one_hot(y_train)
-        y_validate = one_hot(y_validate)
+        x_train, x_validate, y_train, y_validate = shuffle()
