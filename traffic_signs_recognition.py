@@ -22,7 +22,10 @@ Question 1: preprocessing
 '''
 from sklearn.model_selection import train_test_split
 
-train_features = train['features']
+train_features = train['features'].astype(float)
+train_features = train_features / 255. - 0.5 #normalize
+
+print(train_features[0][0][0])
 
 # YUV doesn't work...
 '''
@@ -72,7 +75,7 @@ for i in range(count):
     train_rotate_right[i] = rotate_right
     train_rotate_left[i] = rotate_left
 
-
+print("translate", train_translated_down[0][0][0])
 
 train_data_all = np.concatenate([
     train_features,
@@ -118,7 +121,7 @@ Question 3: model architecture
 
 import tensorflow as tf
 
-p_stdev = 0.01
+p_stdev = 0.1
 
 layer_width = {
     'layer_1': 6,
@@ -128,7 +131,7 @@ layer_width = {
 
 weights = {
     'layer_1': tf.Variable(tf.truncated_normal(
-        [5, 5, 3, layer_width['layer_1']], stddev=0.01)),
+        [5, 5, 3, layer_width['layer_1']], stddev=p_stdev)),
     'layer_2': tf.Variable(tf.truncated_normal(
         [5, 5, layer_width['layer_1'], layer_width['layer_2']], stddev=p_stdev)),
     'fully_connected': tf.Variable(tf.truncated_normal(
