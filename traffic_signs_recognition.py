@@ -22,8 +22,18 @@ Question 1: preprocessing
 '''
 from sklearn.model_selection import train_test_split
 
+def one_hot(a):
+    b = np.zeros((a.size, n_classes))
+    b[np.arange(a.size),a] = 1
+    return b
+
 train_features = train['features'].astype(float)
 train_features = train_features / 255. - 0.5 #normalize
+
+test_features = test['features'].astype(float)
+test_features = test_features / 255. - 0.5
+test_labels = one_hot(test['labels'])
+
 
 print(train_features[0][0][0])
 
@@ -33,6 +43,7 @@ for i in range(train_features.shape[0]):
     yuv = cv2.cvtColor(train_features[i], cv2.COLOR_RGB2YUV)
     train_features[i] = yuv
 '''
+
 
 # generate translated image:
 TRANSLATE_DELTA = 4
@@ -108,10 +119,7 @@ def shuffle():
     return x_train, x_validate, y_train, y_validate
 
 
-def one_hot(a):
-    b = np.zeros((a.size, n_classes))
-    b[np.arange(a.size),a] = 1
-    return b
+
 
 
 '''
@@ -171,6 +179,8 @@ def LeNet(x):
 
     conv2 = conv2d(conv1, weights['layer_2'], biases['layer_2'], strides=1) #10x10x16
     conv2 = maxpool2d(conv2, k=2) #5x5x16
+
+    # todo: connect conv1 to fc1
 
     fc1 = tf.reshape(
         conv2,
@@ -249,3 +259,7 @@ with tf.Session() as sess:
 
         # shuffle data:
         x_train, x_validate, y_train, y_validate = shuffle()
+
+    print("running on test")
+    test_loss, test_acc = eval_data(test_features, test_labels)
+    print("test loss", test_loss, "test accuracy", test_acc)
