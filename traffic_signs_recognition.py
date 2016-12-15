@@ -3,6 +3,7 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
+import random
 
 training_file = "C:\\Users\\AW51R2\\code\\carnd\\traffic-signs-data\\train.p"
 testing_file = "C:\\Users\\AW51R2\\code\\carnd\\traffic-signs-data\\test.p"
@@ -47,62 +48,29 @@ for i in range(train_features.shape[0]):
 
 # generate translated image:
 TRANSLATE_DELTA = 4
-ROTATE_DELTA = 90
+JIGGLE_COPY = 8
 
-train_translated_right = np.copy(train_features)
-train_translated_left = np.copy(train_features)
+bins = np.bincount(train['labels'])
+average_label_count = np.average(bins)
 
-train_translated_up = np.copy(train_features)
-train_translated_down = np.copy(train_features)
+# for each image, generate N copies that are randomly jiggled on X,Y with [0.9,1.1] of delta 4
 
-train_rotate_right = np.copy(train_features)
-train_rotate_left = np.copy(train_features)
+train_and_jiggle = [train_features]
+train_and_jiggle_labels = [train['labels']]
 
-m_right = np.float32([[1,0,TRANSLATE_DELTA],[0,1,0]])
-m_left  = np.float32([[1,0,-TRANSLATE_DELTA],[0,1,0]])
-
-m_up = np.float32([[1,0,0],[0,1,TRANSLATE_DELTA]])
-m_down = np.float32([[1,0,0],[0,1,-TRANSLATE_DELTA]])
-
-r_right = cv2.getRotationMatrix2D((16,16),ROTATE_DELTA,1)
-r_left = cv2.getRotationMatrix2D((16,16),-ROTATE_DELTA,1)
+for i in range(JIGGLE_COPY):
+    train_and_jiggle.append(np.copy(train_features))
+    train_and_jiggle_labels.append(np.copy(train['labels']))
 
 for i in range(count):
-    moved_right = cv2.warpAffine(train_translated_right[i], m_right, (32,32))
-    moved_left   = cv2.warpAffine(train_translated_left[i], m_left, (32,32))
+    for j in range(JIGGLE_COPY):
+        m = np.float32([[1,0,random.uniform(0.9,1.1)*TRANSLATE_DELTA], [0,1,random.uniform(0.9,1.1)*TRANSLATE_DELTA]])
+        train_and_jiggle[j+1][i] = cv2.warpAffine(train_features[i], m, (32,32))
 
-    moved_up = cv2.warpAffine(train_translated_up[i], m_up, (32,32))
-    moved_down = cv2.warpAffine(train_translated_down[i], m_down, (32,32))
 
-    rotate_right = cv2.warpAffine(train_rotate_right[i], r_right, (32,32))
-    rotate_left = cv2.warpAffine(train_rotate_left[i], r_left, (32, 32))
+train_data_all = np.concatenate(train_and_jiggle)
 
-    train_translated_right[i] = moved_right
-    train_translated_left[i] = moved_left
-
-    train_translated_up[i] = moved_up
-    train_translated_down[i] = moved_down
-
-    train_rotate_right[i] = rotate_right
-    train_rotate_left[i] = rotate_left
-
-print("translate", train_translated_down[0][0][0])
-
-train_data_all = np.concatenate([
-    train_features,
-    train_translated_right,
-    train_translated_left,
-    train_translated_up,
-    train_translated_down
-])
-
-train_label_all = np.concatenate([
-    train['labels'],
-    train['labels'],
-    train['labels'],
-    train['labels'],
-    train['labels']
-])
+train_label_all = np.concatenate(train_and_jiggle_labels)
 
 print("fake data generated", train_data_all.shape)
 
